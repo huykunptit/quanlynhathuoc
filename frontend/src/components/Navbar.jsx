@@ -6,7 +6,16 @@ import { ShoppingCart, User, Search, Menu, Phone, Heart } from 'lucide-react';
 export default function Navbar() {
   const [user, setUser] = useState(null);
   const [cartCount, setCartCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
   const router = useRouter();
+
+  useEffect(() => {
+    if (router.query.search) {
+      setSearchQuery(router.query.search);
+    } else {
+      setSearchQuery('');
+    }
+  }, [router.query.search]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -71,13 +80,18 @@ export default function Navbar() {
               type="text" 
               placeholder="Tìm kiếm tên thuốc, triệu chứng, hoạt chất..." 
               className="w-full bg-transparent border-none outline-none px-4 text-gray-700 placeholder-gray-400 text-sm"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  router.push(`/?search=${e.target.value}`);
+                  router.push(`/?search=${searchQuery}`);
                 }
               }}
             />
-            <button className="bg-blue-600 text-white px-5 h-full flex items-center justify-center hover:bg-blue-700 transition-colors">
+            <button 
+              onClick={() => router.push(`/?search=${searchQuery}`)}
+              className="bg-blue-600 text-white px-5 h-full flex items-center justify-center hover:bg-blue-700 transition-colors"
+            >
               <Search size={18} />
             </button>
           </div>
