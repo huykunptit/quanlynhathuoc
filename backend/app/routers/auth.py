@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app import models, database, utils
 from pydantic import BaseModel, EmailStr
 from datetime import timedelta
+from typing import Optional
 
 router = APIRouter(
     prefix="/auth",
@@ -20,6 +21,15 @@ class UserCreate(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+class ProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+
+class ChangePassword(BaseModel):
+    current_password: str
+    new_password: str
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
     credentials_exception = HTTPException(
@@ -39,6 +49,12 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+def get_admin_user(current_user: models.User = Depends(get_current_user)):
+    """Guard: chỉ cho Admin truy cập"""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 
 @router.post("/register", response_model=Token)
 def register(user: UserCreate, db: Session = Depends(database.get_db)):
@@ -75,4 +91,33 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
 
 @router.get("/me")
 def read_users_me(current_user: models.User = Depends(get_current_user)):
-    return {"id": current_user.id, "email": current_user.email, "full_name": current_user.full_name, "is_admin": current_user.is_admin}
+    return {
+        "id": current_user.id, 
+        "email": current_user.email, 
+        "full_name": current_user.full_name, 
+        "phone": current_user.phone,
+        "address": current_user.address,
+        "is_admin": current_user.is_admin
+    }
+
+@router.put("/profile")
+def update_profile(profile: ProfileUpdate, current_user: models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
+    if profile.full_name is not None:
+        current_user.full_name = profile.full_name
+    if profile.phone is not None:
+        current_user.phone = profile.phone
+    if profile.address is not None:
+        current_user.address = profile.address
+        
+    db.commit()
+    db.refresh(current_user)
+    return {"message": "Profile updated successfully"}
+
+@router.put("/change-password")
+def change_password(data: ChangePassword, current_user: models.User = Depends(get_current_user), db: Session = Depends(database.get_db)):
+    if not utils.verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect current password")
+        
+    current_user.hashed_password = utils.get_password_hash(data.new_password)
+    db.commit()
+    return {"message": "Password changed successfully"}

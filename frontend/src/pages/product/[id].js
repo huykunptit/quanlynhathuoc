@@ -18,7 +18,7 @@ export default function ProductDetail() {
 
   const fetchProduct = async () => {
     try {
-      const res = await fetch(`http://localhost:8000/products/${id}`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/${id}`);
       if (!res.ok) throw new Error('Không tìm thấy sản phẩm');
       const data = await res.json();
       setProduct(data);
@@ -137,16 +137,19 @@ export default function ProductDetail() {
         </div>
       </div>
       
-      {/* Product Details Tabs (Mock) */}
+      {/* Product Details */}
       <div className="mt-8 bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
         <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-4">Thông tin chi tiết</h2>
         <div className="prose max-w-none text-gray-600 text-sm leading-relaxed">
-          <p><strong>Thành phần chính:</strong> Xem trên bao bì sản phẩm.</p>
+          <p><strong>Thành phần chính:</strong> {product.active_ingredient || 'Xem trên bao bì sản phẩm.'}</p>
           <p><strong>Công dụng:</strong> {product.description}</p>
-          <p><strong>Liều dùng và cách dùng:</strong> Đọc kỹ hướng dẫn sử dụng trước khi dùng hoặc tuân theo chỉ định của bác sĩ.</p>
+          <p><strong>Liều dùng và cách dùng:</strong> {product.dosage || 'Đọc kỹ hướng dẫn sử dụng trước khi dùng hoặc tuân theo chỉ định của bác sĩ.'}</p>
+          {product.contraindications && (
+            <p className="text-red-600"><strong>Chống chỉ định:</strong> {product.contraindications}</p>
+          )}
           <p><strong>Bảo quản:</strong> Nơi khô ráo, thoáng mát, tránh ánh sáng trực tiếp. Để xa tầm tay trẻ em.</p>
           <div className="mt-6 p-4 bg-yellow-50 text-yellow-800 rounded-lg border border-yellow-200">
-            <strong>Lưu ý:</strong> Thực phẩm này không phải là thuốc và không có tác dụng thay thế thuốc chữa bệnh. Tác dụng của sản phẩm tùy thuộc vào cơ địa của mỗi người.
+            <strong>Lưu ý:</strong> Đọc kỹ hướng dẫn sử dụng trước khi dùng. Nếu cần, hãy hỏi ý kiến bác sĩ hoặc dược sĩ.
           </div>
         </div>
       </div>

@@ -5,12 +5,21 @@ import openai
 import google.generativeai as genai
 import anthropic
 import os
+import logging
 from sqlalchemy.orm import Session
 from app.models import Disease
 
+logger = logging.getLogger(__name__)
+MEDICAL_DISCLAIMER = "\n\n⚠️ *Lưu ý: Kết quả chẩn đoán của chatbot chỉ mang tính chất tham khảo, không thay thế cho chỉ định của bác sĩ chuyên khoa. Vui lòng đến cơ sở y tế gần nhất nếu triệu chứng nghiêm trọng.*"
+
 class NLPService:
     def __init__(self):
-        self.vectorizer = TfidfVectorizer(stop_words=None, max_features=1000)
+        self.vectorizer = TfidfVectorizer(
+            stop_words=None,
+            max_features=5000,
+            ngram_range=(1, 2),
+            sublinear_tf=True
+        )
         self.tfidf_matrix = None
         self.diseases = []
         
@@ -30,30 +39,49 @@ class NLPService:
 
     def train_or_update(self, db: Session):
         """Huấn luyện mô hình TF-IDF dựa trên dữ liệu bệnh từ database"""
-        self.diseases = db.query(Disease).all()
-        if not self.diseases:
+        db_diseases = db.query(Disease).all()
+        if not db_diseases:
             return
             
-        corpus = [d.symptoms.lower() for d in self.diseases if d.symptoms]
+        self.diseases = []
+        corpus = []
+        for d in db_diseases:
+            self.diseases.append({
+                "id": d.id,
+                "name": d.name,
+                "description": d.description,
+                "symptoms": d.symptoms,
+                "recommended_drugs": d.recommended_drugs
+            })
+            if d.symptoms:
+                corpus.append(d.symptoms.lower())
+                
         if corpus:
             self.tfidf_matrix = self.vectorizer.fit_transform(corpus)
 
-    def diagnose_rule_based(self, user_text: str, threshold: float = 0.2):
+    def diagnose_rule_based(self, user_text: str, threshold: float = 0.15):
         """Sử dụng TF-IDF và Cosine Similarity để chẩn đoán"""
         if self.tfidf_matrix is None or not self.diseases:
-            return None, 0.0
+            return [], 0.0
 
         user_vec = self.vectorizer.transform([user_text.lower()])
         similarities = cosine_similarity(user_vec, self.tfidf_matrix).flatten()
         
-        best_match_idx = np.argmax(similarities)
-        best_score = similarities[best_match_idx]
-
-        if best_score >= threshold:
-            best_disease = self.diseases[best_match_idx]
-            return best_disease, best_score
+        if len(similarities) == 0:
+            return [], 0.0
             
-        return None, best_score
+        top_k = min(3, len(self.diseases))
+        top_indices = np.argsort(similarities)[-top_k:][::-1]
+        
+        top_diseases = []
+        for idx in top_indices:
+            if similarities[idx] >= threshold:
+                top_diseases.append((self.diseases[idx], similarities[idx]))
+                
+        if top_diseases:
+            return top_diseases, top_diseases[0][1]
+            
+        return [], similarities[np.argmax(similarities)]
 
     def diagnose_openai(self, user_text: str):
         """Fallback: Sử dụng OpenAI API để chẩn đoán"""
@@ -117,14 +145,32 @@ class NLPService:
             self.train_or_update(db)
 
         # 1. Rule-based / TF-IDF
-        disease, score = self.diagnose_rule_based(user_text)
+        top_diseases, score = self.diagnose_rule_based(user_text)
         
-        if disease:
-            reply = f"Dựa trên triệu chứng của bạn, tôi dự đoán bạn có thể bị **{disease.name}**.\n\n"
-            reply += f"- **Thông tin**: {disease.description}\n"
-            if disease.recommended_drugs:
-                reply += f"- **Gợi ý sản phẩm**: Dựa trên phân tích, bạn có thể tham khảo các sản phẩm chứa `{disease.recommended_drugs}`. Vui lòng tham khảo ý kiến bác sĩ trước khi sử dụng."
-            return reply, score
+        if top_diseases:
+            best_disease = top_diseases[0][0]
+            reply = f"Dựa trên triệu chứng của bạn, tôi dự đoán bạn có thể bị **{best_disease['name']}**.\n\n"
+            reply += f"- **Thông tin**: {best_disease['description']}\n"
+            
+            if len(top_diseases) > 1:
+                other_names = [d['name'] for d, s in top_diseases[1:]]
+                reply += f"- **Các khả năng khác**: {', '.join(other_names)}\n"
+            
+            recommended_products = []
+            if best_disease['recommended_drugs']:
+                reply += f"- **Gợi ý sản phẩm**: Dựa trên phân tích, bạn có thể tham khảo các sản phẩm chứa `{best_disease['recommended_drugs']}`. Vui lòng tham khảo ý kiến bác sĩ trước khi sử dụng."
+                
+                # Fetch matching products from DB
+                from sqlalchemy import or_
+                from app import models
+                drugs_list = [d.strip() for d in best_disease['recommended_drugs'].split(",") if d.strip()]
+                if drugs_list:
+                    conditions = []
+                    for drug in drugs_list:
+                        conditions.append(models.Product.name.ilike(f"%{drug}%"))
+                    recommended_products = db.query(models.Product).filter(or_(*conditions)).all()
+            
+            return reply + MEDICAL_DISCLAIMER, score, recommended_products
             
         # 2. Fallback to LLM
         if self.llm_provider == "gemini":
@@ -134,6 +180,6 @@ class NLPService:
         else:
             reply, llm_score = self.diagnose_openai(user_text)
             
-        return reply, llm_score
+        return reply + MEDICAL_DISCLAIMER, llm_score, []
 
 nlp_service = NLPService()

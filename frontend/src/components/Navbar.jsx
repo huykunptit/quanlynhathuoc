@@ -7,20 +7,52 @@ export default function Navbar() {
   const [user, setUser] = useState(null);
   const [cartCount, setCartCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     if (router.query.search) {
       setSearchQuery(router.query.search);
+      setShowDropdown(false);
     } else {
       setSearchQuery('');
     }
   }, [router.query.search]);
 
   useEffect(() => {
+    const fetchResults = async () => {
+      if (!searchQuery.trim()) {
+        setSearchResults([]);
+        return;
+      }
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/?search=${encodeURIComponent(searchQuery)}&limit=5`);
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data);
+        }
+      } catch (error) {
+        console.error("Lỗi khi tìm kiếm:", error);
+      }
+    };
+
+    const timeoutId = setTimeout(() => {
+      if (searchQuery && searchQuery !== router.query.search) {
+        fetchResults();
+        setShowDropdown(true);
+      } else {
+        setShowDropdown(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, router.query.search]);
+
+  useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
-      fetch('http://localhost:8000/auth/me', {
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       .then(res => res.json())
@@ -75,25 +107,71 @@ export default function Navbar() {
           </Link>
 
           {/* Search Bar */}
-          <div className="flex-grow max-w-2xl hidden md:flex items-center bg-gray-100 rounded-full border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all overflow-hidden h-11">
+          <div className="flex-grow max-w-2xl hidden md:flex items-center bg-gray-100 rounded-full border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all overflow-visible h-11 relative">
             <input 
               type="text" 
               placeholder="Tìm kiếm tên thuốc, triệu chứng, hoạt chất..." 
               className="w-full bg-transparent border-none outline-none px-4 text-gray-700 placeholder-gray-400 text-sm"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => { if (searchQuery.trim() && searchResults.length > 0) setShowDropdown(true); }}
+              onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
+                  setShowDropdown(false);
                   router.push(`/?search=${searchQuery}`);
                 }
               }}
             />
             <button 
-              onClick={() => router.push(`/?search=${searchQuery}`)}
-              className="bg-blue-600 text-white px-5 h-full flex items-center justify-center hover:bg-blue-700 transition-colors"
+              onClick={() => {
+                setShowDropdown(false);
+                router.push(`/?search=${searchQuery}`);
+              }}
+              className="bg-blue-600 text-white px-5 h-full flex items-center justify-center hover:bg-blue-700 transition-colors rounded-r-full"
             >
               <Search size={18} />
             </button>
+
+            {/* Search Dropdown Preview */}
+            {showDropdown && searchResults.length > 0 && (
+              <div className="absolute top-14 left-0 right-0 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden z-50">
+                <ul className="max-h-80 overflow-y-auto">
+                  {searchResults.map((product) => (
+                    <li key={product.id} className="border-b border-gray-100 last:border-none">
+                      <Link href={`/product/${product.id}`}>
+                        <div className="flex items-center px-4 py-3 hover:bg-blue-50 transition-colors cursor-pointer">
+                          <div className="w-10 h-10 bg-gray-100 rounded flex-shrink-0 overflow-hidden flex items-center justify-center mr-3 border border-gray-200">
+                            {product.image_url ? (
+                              <img src={product.image_url} alt={product.name} className="object-cover w-full h-full" />
+                            ) : (
+                              <span className="text-gray-400 text-[10px]">No img</span>
+                            )}
+                          </div>
+                          <div className="flex-grow">
+                            <h4 className="text-sm font-semibold text-gray-800 line-clamp-1">{product.name}</h4>
+                            <p className="text-xs text-blue-600 font-bold mt-0.5">
+                              {product.price.toLocaleString('vi-VN')} ₫
+                            </p>
+                          </div>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                  <li className="bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <button 
+                      onClick={() => {
+                        setShowDropdown(false);
+                        router.push(`/?search=${searchQuery}`);
+                      }}
+                      className="w-full text-center text-sm text-blue-600 font-medium py-3"
+                    >
+                      Xem tất cả kết quả
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            )}
           </div>
 
           {/* Action Icons */}
@@ -133,7 +211,8 @@ export default function Navbar() {
                   <div className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm text-gray-800 font-medium border-b mb-1">
                     Xin chào, {user.full_name || 'Khách'}
                   </div>
-                  <div className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm">Đơn hàng của tôi</div>
+                  <div onClick={() => router.push('/profile')} className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm">Hồ sơ cá nhân</div>
+                  <div onClick={() => router.push('/orders')} className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm">Đơn hàng của tôi</div>
                   {user.is_admin && (
                     <div onClick={() => router.push('/admin/dashboard')} className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm text-blue-600 font-medium">
                       Dashboard Quản lý

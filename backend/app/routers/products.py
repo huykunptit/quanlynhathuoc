@@ -3,6 +3,7 @@ from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
 from app import models, database
 from app.database import remove_accents
+from app.routers.auth import get_admin_user
 from typing import List, Optional
 from pydantic import BaseModel
 
@@ -19,9 +20,39 @@ class ProductResponse(BaseModel):
     stock: int
     image_url: Optional[str]
     indications: Optional[str]
+    category_id: Optional[int] = None
+    active_ingredient: Optional[str] = None
+    contraindications: Optional[str] = None
+    dosage: Optional[str] = None
+    is_active: bool = True
 
     class Config:
         orm_mode = True
+
+class ProductCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    stock: int = 0
+    image_url: Optional[str] = None
+    indications: Optional[str] = None
+    category_id: Optional[int] = None
+    active_ingredient: Optional[str] = None
+    contraindications: Optional[str] = None
+    dosage: Optional[str] = None
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    stock: Optional[int] = None
+    image_url: Optional[str] = None
+    indications: Optional[str] = None
+    category_id: Optional[int] = None
+    active_ingredient: Optional[str] = None
+    contraindications: Optional[str] = None
+    dosage: Optional[str] = None
+    is_active: Optional[bool] = None
 
 @router.get("/", response_model=List[ProductResponse])
 def get_products(
@@ -99,3 +130,35 @@ def get_product(product_id: int, db: Session = Depends(database.get_db)):
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
+
+@router.post("/", response_model=ProductResponse)
+def create_product(product: ProductCreate, db: Session = Depends(database.get_db), admin: models.User = Depends(get_admin_user)):
+    db_product = models.Product(**product.dict())
+    db.add(db_product)
+    db.commit()
+    db.refresh(db_product)
+    return db_product
+
+@router.put("/{product_id}", response_model=ProductResponse)
+def update_product(product_id: int, product: ProductUpdate, db: Session = Depends(database.get_db), admin: models.User = Depends(get_admin_user)):
+    db_product = db.query(models.Product).filter(models.Product.id == product_id).first()
+    if not db_product:
+        raise HTTPException(status_code=404, detail="Product not found")
+        
+    update_data = product.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_product, key, value)
+        
+    db.commit()
+    db.refresh(db_product)
+    return db_product
+
+@router.delete("/{product_id}")
+def delete_product(product_id: int, db: Session = Depends(database.get_db), admin: models.User = Depends(get_admin_user)):
+    db_product = db.query(models.Product).filter(models.Product.id == product_id).first()
+    if not db_product:
+        raise HTTPException(status_code=404, detail="Product not found")
+        
+    db_product.is_active = False
+    db.commit()
+    return {"message": "Product deleted successfully"}

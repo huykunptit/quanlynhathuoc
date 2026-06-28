@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Stethoscope, Loader2 } from 'lucide-react';
+import { MessageCircle, X, Send, Stethoscope, Loader2, ShoppingCart } from 'lucide-react';
 
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -17,6 +17,20 @@ export default function ChatWidget() {
     scrollToBottom();
   }, [messages, loading]);
 
+  const addToCart = (product) => {
+    const cart = JSON.parse(localStorage.getItem('cart') || '[]');
+    const existing = cart.find(item => item.product_id === product.id);
+    if (existing) {
+      existing.quantity += 1;
+    } else {
+      cart.push({ product_id: product.id, name: product.name, price: product.price, quantity: 1 });
+    }
+    localStorage.setItem('cart', JSON.stringify(cart));
+    // Dispatch event so Navbar updates immediately
+    window.dispatchEvent(new Event('cart-updated'));
+    alert('Đã thêm vào giỏ hàng!');
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
 
@@ -26,7 +40,7 @@ export default function ChatWidget() {
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost:8000/chat/', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: input, session_id: sessionId })
@@ -39,7 +53,11 @@ export default function ChatWidget() {
       
       if (!sessionId) setSessionId(data.session_id);
 
-      setMessages([...newMessages, { sender: 'bot', text: data.reply || 'Xin lỗi, tôi không thể trả lời lúc này.' }]);
+      setMessages([...newMessages, { 
+        sender: 'bot', 
+        text: data.reply || 'Xin lỗi, tôi không thể trả lời lúc này.',
+        products: data.recommended_products || []
+      }]);
     } catch (error) {
       setMessages([...newMessages, { sender: 'bot', text: 'Xin lỗi, hệ thống đang bận. Vui lòng thử lại sau.' }]);
     } finally {
@@ -79,21 +97,59 @@ export default function ChatWidget() {
             <div className="text-center text-xs text-gray-400 mb-2">Hôm nay</div>
             
             {messages.map((msg, idx) => (
-              <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                {msg.sender === 'bot' && (
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center mr-2 flex-shrink-0 mt-1">
-                    <Stethoscope size={14} className="text-blue-600" />
+              <div key={idx} className="flex flex-col space-y-2">
+                <div className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {msg.sender === 'bot' && (
+                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center mr-2 flex-shrink-0 mt-1">
+                      <Stethoscope size={14} className="text-blue-600" />
+                    </div>
+                  )}
+                  
+                  <div className={`max-w-[75%] p-3 shadow-sm ${
+                    msg.sender === 'user' 
+                      ? 'bg-blue-600 text-white rounded-2xl rounded-tr-sm' 
+                      : 'bg-white text-gray-800 rounded-2xl rounded-tl-sm border border-gray-100'
+                  } break-words whitespace-pre-wrap leading-relaxed`}>
+                    {/* Parse markdown-like syntax safely (basic implementation for bold) */}
+                    {(msg.text || '').split('**').map((part, i) => i % 2 === 1 ? <strong key={i}>{part}</strong> : part)}
+                  </div>
+                </div>
+
+                {/* Render recommended products if available */}
+                {msg.sender === 'bot' && msg.products && msg.products.length > 0 && (
+                  <div className="ml-10 pr-4 flex flex-col space-y-2 mt-1">
+                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Sản phẩm khuyên dùng:</span>
+                    <div className="flex flex-col space-y-2">
+                      {msg.products.map((product) => {
+                        // Helper for product placeholder image
+                        const removeAccents = (str) => {
+                          return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+                        };
+                        const firstWord = product.name.split(' ').slice(0, 2).join(' ');
+                        const placeholderImg = product.image_url || `https://placehold.co/100x100/ffffff/2563eb?text=${encodeURIComponent(removeAccents(firstWord))}`;
+                        
+                        return (
+                          <div key={product.id} className="bg-white border rounded-xl p-3 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex items-center space-x-3 min-w-0 flex-grow">
+                              <img src={placeholderImg} alt={product.name} className="w-10 h-10 object-contain rounded border flex-shrink-0" />
+                              <div className="min-w-0">
+                                <h4 className="text-xs font-semibold text-gray-800 truncate" title={product.name}>{product.name}</h4>
+                                <span className="text-xs font-bold text-orange-600">{product.price.toLocaleString()} đ</span>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={() => addToCart(product)}
+                              className="ml-2 bg-orange-500 text-white p-2 rounded-lg hover:bg-orange-600 transition-colors flex-shrink-0 flex items-center justify-center"
+                              title="Thêm vào giỏ"
+                            >
+                              <ShoppingCart size={14} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
-                
-                <div className={`max-w-[75%] p-3 shadow-sm ${
-                  msg.sender === 'user' 
-                    ? 'bg-blue-600 text-white rounded-2xl rounded-tr-sm' 
-                    : 'bg-white text-gray-800 rounded-2xl rounded-tl-sm border border-gray-100'
-                } break-words whitespace-pre-wrap leading-relaxed`}>
-                  {/* Parse markdown-like syntax safely (basic implementation for bold) */}
-                  {(msg.text || '').split('**').map((part, i) => i % 2 === 1 ? <strong key={i}>{part}</strong> : part)}
-                </div>
               </div>
             ))}
             
@@ -132,6 +188,9 @@ export default function ChatWidget() {
               >
                 <Send size={16} className="ml-0.5" />
               </button>
+            </div>
+            <div className="text-[10px] text-center text-gray-400 mt-2">
+              Chatbot chỉ mang tính chất tham khảo. Không thay thế chẩn đoán y khoa.
             </div>
           </div>
         </div>

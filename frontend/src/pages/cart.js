@@ -6,6 +6,9 @@ import Link from 'next/link';
 export default function Cart() {
   const [cart, setCart] = useState([]);
   const [user, setUser] = useState(null);
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('COD');
+  const [note, setNote] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -44,17 +47,26 @@ export default function Cart() {
       alert('Giỏ hàng trống!');
       return;
     }
+    if (!shippingAddress.trim()) {
+      alert('Vui lòng nhập địa chỉ giao hàng!');
+      return;
+    }
 
     const token = localStorage.getItem('token');
     try {
       const items = cart.map(item => ({ product_id: item.product_id, quantity: item.quantity }));
-      const res = await fetch('http://localhost:8000/orders/', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/orders/`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ items })
+        body: JSON.stringify({ 
+          items,
+          shipping_address: shippingAddress,
+          payment_method: paymentMethod,
+          note: note
+        })
       });
 
       if (!res.ok) {
@@ -157,6 +169,35 @@ export default function Cart() {
                     Mua thêm {(300000 - total).toLocaleString()} đ để được freeship
                   </div>
                 )}
+              </div>
+              
+              <div className="border-t pt-4 mb-4">
+                <h4 className="font-semibold text-gray-800 mb-3">Thông tin giao hàng</h4>
+                <div className="space-y-3">
+                  <input 
+                    type="text" 
+                    placeholder="Địa chỉ giao hàng (*)" 
+                    required
+                    className="w-full text-sm border rounded p-2 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                    value={shippingAddress}
+                    onChange={e => setShippingAddress(e.target.value)}
+                  />
+                  <select 
+                    className="w-full text-sm border rounded p-2 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                    value={paymentMethod}
+                    onChange={e => setPaymentMethod(e.target.value)}
+                  >
+                    <option value="COD">Thanh toán khi nhận hàng (COD)</option>
+                    <option value="bank_transfer">Chuyển khoản ngân hàng</option>
+                  </select>
+                  <textarea 
+                    placeholder="Ghi chú đơn hàng" 
+                    className="w-full text-sm border rounded p-2 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                    rows="2"
+                    value={note}
+                    onChange={e => setNote(e.target.value)}
+                  ></textarea>
+                </div>
               </div>
               
               <div className="border-t pt-4 mb-6">

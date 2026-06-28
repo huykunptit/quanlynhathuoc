@@ -18,7 +18,7 @@ export default function Home() {
 
   const fetchProducts = async (query = '') => {
     try {
-      const res = await fetch(`http://localhost:8000/products/?search=${query}`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/?search=${query}`);
       const data = await res.json();
       setProducts(data);
     } catch (error) {
