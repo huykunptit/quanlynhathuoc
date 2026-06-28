@@ -1,0 +1,18 @@
+import os
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+load_dotenv()
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key or api_key == "placeholder":
+    print("No API Key found")
+else:
+    genai.configure(api_key=api_key)
+    try:
+        models = genai.list_models()
+        print("Available models supporting generateContent:")
+        for m in models:
+            if 'generateContent' in m.supported_generation_methods:
+                print(m.name)
+    except Exception as e:
+        print("Error:", e)

@@ -1,0 +1,21 @@
+# Environments and API Keys
+.env
+.env*.local
+
+# Python virtual environment & database
+backend/venv/
+backend/pharmacy.db
+backend/__pycache__/
+backend/**/*.pyc
+backend/.pytest_cache/
+
+# Node.js / Frontend
+**/node_modules/
+**/.next/
+frontend/out/
+frontend/build/
+npm-debug.log*
+
+# OS specific files
+.DS_Store
+Thumbs.db
